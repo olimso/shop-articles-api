@@ -12,6 +12,8 @@ public class ArticleResponse
     public string? Category { get; init; }
     public decimal Price { get; init; }
     public string? Currency { get; init; }
+    // Send this back in PUT; the update is rejected with 409 if the article has changed since.
+    public long Version { get; init; }
 
     public static ArticleResponse FromModel(Article article) => new()
     {
@@ -21,5 +23,6 @@ public class ArticleResponse
         Category = article.Category,
         Price = article.Price,
         Currency = article.Currency,
+        Version = article.Version,
     };
 }

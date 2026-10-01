@@ -24,6 +24,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 
 builder.Services.AddSingleton<IValidator<CreateArticleRequest>, CreateArticleRequestValidator>();
+builder.Services.AddSingleton<IValidator<UpdateArticleRequest>, UpdateArticleRequestValidator>();
 builder.Services.AddScoped<IArticleService, ArticleService>();
 builder.Services.AddInfrastructure(builder.Configuration);
 

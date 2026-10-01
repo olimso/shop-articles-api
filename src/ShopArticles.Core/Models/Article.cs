@@ -9,4 +9,7 @@ public class Article
     public string? Category { get; set; }
     public decimal Price { get; set; }
     public string? Currency { get; set; }
+
+    // Starts at 1 and goes up by one on every update. Used to detect that someone else changed the article.
+    public long Version { get; set; }
 }

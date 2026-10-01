@@ -16,8 +16,27 @@ public class InMemoryArticleRepository : IArticleRepository
     {
         var stored = Copy(article);
         stored.Id = Interlocked.Increment(ref _lastId);
+        stored.Version = 1;
         _articles[stored.Id] = stored;
         return Task.FromResult(Copy(stored));
+    }
+
+    public Task<UpdateResult<Article>> UpdateAsync(Article article, long expectedVersion, CancellationToken cancellationToken = default)
+    {
+        if (!_articles.TryGetValue(article.Id, out var current))
+            return Task.FromResult(new UpdateResult<Article>(UpdateStatus.NotFound));
+
+        if (current.Version != expectedVersion)
+            return Task.FromResult(new UpdateResult<Article>(UpdateStatus.Conflict));
+
+        var updated = Copy(article);
+        updated.Version = expectedVersion + 1;
+
+        // TryUpdate only swaps if the stored object is still the one read above. If another update got in
+        // between, it fails, and that update has already raised the version, so this one is a conflict.
+        return Task.FromResult(_articles.TryUpdate(article.Id, updated, current)
+            ? new UpdateResult<Article>(UpdateStatus.Updated, Copy(updated))
+            : new UpdateResult<Article>(UpdateStatus.Conflict));
     }
 
     public Task<Article?> GetByIdAsync(long id, CancellationToken cancellationToken = default)
@@ -49,5 +68,6 @@ public class InMemoryArticleRepository : IArticleRepository
         Category = a.Category,
         Price = a.Price,
         Currency = a.Currency,
+        Version = a.Version,
     };
 }

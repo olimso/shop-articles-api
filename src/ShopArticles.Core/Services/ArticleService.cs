@@ -6,7 +6,10 @@ using ShopArticles.Core.Repositories;
 
 namespace ShopArticles.Core.Services;
 
-public class ArticleService(IArticleRepository repository, IValidator<CreateArticleRequest> validator) : IArticleService
+public class ArticleService(
+    IArticleRepository repository,
+    IValidator<CreateArticleRequest> validator,
+    IValidator<UpdateArticleRequest> updateValidator) : IArticleService
 {
     public async Task<ArticleResponse> CreateAsync(CreateArticleRequest request, CancellationToken cancellationToken = default)
     {
@@ -40,6 +43,17 @@ public class ArticleService(IArticleRepository repository, IValidator<CreateArti
         });
 
         return created;
+    }
+
+    public async Task<UpdateResult<ArticleResponse>> UpdateAsync(long id, UpdateArticleRequest request, CancellationToken cancellationToken = default)
+    {
+        await updateValidator.ValidateAndThrowAsync(request, cancellationToken);
+
+        var article = ToModel(request);
+        article.Id = id;
+
+        var result = await repository.UpdateAsync(article, request.Version!.Value, cancellationToken);
+        return new UpdateResult<ArticleResponse>(result.Status, result.Value is null ? null : ArticleResponse.FromModel(result.Value));
     }
 
     public async Task<ArticleResponse?> GetByIdAsync(long id, CancellationToken cancellationToken = default)

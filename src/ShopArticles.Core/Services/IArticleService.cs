@@ -1,4 +1,5 @@
 using ShopArticles.Core.Contracts;
+using ShopArticles.Core.Repositories;
 
 namespace ShopArticles.Core.Services;
 
@@ -12,6 +13,11 @@ public interface IArticleService
     // Throws a FluentValidation ValidationException with errors keyed by item index, e.g. "[1].Price".
     // Results are returned in the order of the requests.
     Task<IReadOnlyList<ArticleResponse>> CreateManyAsync(IReadOnlyList<CreateArticleRequest> requests, CancellationToken cancellationToken = default);
+
+    // Validates the request and replaces the article, unless it was changed since the client loaded it
+    // (request.Version differs from the stored version), which gives UpdateStatus.Conflict.
+    // Throws a FluentValidation ValidationException when the request breaks the article contract.
+    Task<UpdateResult<ArticleResponse>> UpdateAsync(long id, UpdateArticleRequest request, CancellationToken cancellationToken = default);
 
     Task<ArticleResponse?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
 

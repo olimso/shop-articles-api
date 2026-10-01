@@ -45,9 +45,15 @@ namespace ShopArticles.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
-                    b.Property<decimal>("Price")
+                    b.Property<string>("Price")
+                        .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("price");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("version");
 
                     b.HasKey("Id");
 

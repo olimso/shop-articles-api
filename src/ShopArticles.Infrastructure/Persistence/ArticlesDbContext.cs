@@ -25,6 +25,8 @@ public class ArticlesDbContext(DbContextOptions<ArticlesDbContext> options) : Db
                 v => v.ToString(CultureInfo.InvariantCulture),
                 v => decimal.Parse(v, CultureInfo.InvariantCulture));
             article.Property(a => a.Currency).HasColumnName("currency").HasMaxLength(3);
+            // A concurrency token: EF adds "AND version = <original value>" to every UPDATE of this row.
+            article.Property(a => a.Version).HasColumnName("version").IsConcurrencyToken();
 
             // Category search is an exact match, so an index makes it a lookup instead of a table scan.
             article.HasIndex(a => a.Category);

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ShopArticles.Core.Contracts;
+using ShopArticles.Core.Repositories;
 using ShopArticles.Core.Services;
 
 namespace ShopArticles.Api.Controllers;
@@ -25,6 +26,24 @@ public class ArticlesController(IArticleService articleService) : ControllerBase
     {
         var created = await articleService.CreateManyAsync(requests, cancellationToken);
         return Ok(created);
+    }
+
+    [HttpPut("{id:long}")]
+    [Consumes("application/json")]
+    public async Task<ActionResult<ArticleResponse>> Update(long id, UpdateArticleRequest request, CancellationToken cancellationToken)
+    {
+        var result = await articleService.UpdateAsync(id, request, cancellationToken);
+
+        return result.Status switch
+        {
+            UpdateStatus.Updated => Ok(result.Value),
+            UpdateStatus.NotFound => NotFound(),
+            UpdateStatus.Conflict => Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "The article was changed by someone else.",
+                detail: "Load the article again to get its current version, then retry the update."),
+            _ => throw new InvalidOperationException($"Unexpected update status {result.Status}."),
+        };
     }
 
     [HttpGet("{id:long}")]

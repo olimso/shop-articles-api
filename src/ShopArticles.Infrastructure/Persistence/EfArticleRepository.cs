@@ -14,9 +14,35 @@ public class EfArticleRepository(IDbContextFactory<ArticlesDbContext> contextFac
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var stored = Copy(article);
         stored.Id = 0;
+        stored.Version = 1;
         db.Articles.Add(stored);
         await db.SaveChangesAsync(cancellationToken);
         return stored;
+    }
+
+    public async Task<UpdateResult<Article>> UpdateAsync(Article article, long expectedVersion, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        // Attach without loading: EF treats the attached values as the "original" ones, so Version is a
+        // concurrency token with original value expectedVersion. SaveChanges then runs
+        // UPDATE ... WHERE article_id = @id AND version = @expectedVersion, which is the check and the write in one.
+        var updated = Copy(article);
+        updated.Version = expectedVersion;
+        db.Articles.Attach(updated).State = EntityState.Modified;
+        updated.Version = expectedVersion + 1;
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return new UpdateResult<Article>(UpdateStatus.Updated, Copy(updated));
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // No row matched: either the article does not exist or its version has moved on.
+            var exists = await db.Articles.AnyAsync(a => a.Id == article.Id, cancellationToken);
+            return new UpdateResult<Article>(exists ? UpdateStatus.Conflict : UpdateStatus.NotFound);
+        }
     }
 
     public async Task<Article?> GetByIdAsync(long id, CancellationToken cancellationToken = default)
@@ -52,5 +78,6 @@ public class EfArticleRepository(IDbContextFactory<ArticlesDbContext> contextFac
         Category = a.Category,
         Price = a.Price,
         Currency = a.Currency,
+        Version = a.Version,
     };
 }
