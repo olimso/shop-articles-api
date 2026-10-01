@@ -126,3 +126,48 @@ public class CreateArticleRequestValidatorTests
     private static void SetText(CreateArticleRequest request, string property, string value) =>
         typeof(CreateArticleRequest).GetProperty(property)!.SetValue(request, value);
 }
+
+public class UpdateArticleRequestValidatorTests
+{
+    private readonly UpdateArticleRequestValidator _validator = new();
+
+    private static UpdateArticleRequest MemoryStick() => new()
+    {
+        Name = "Branded Memory Stick",
+        Description = "Branded 256 GB memory stick",
+        Category = "USB flash drive",
+        Price = 31.89m,
+        Currency = "NOK",
+        Version = 1,
+    };
+
+    [Fact]
+    public void Valid_update_passes()
+    {
+        Assert.True(_validator.Validate(MemoryStick()).IsValid);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0L)]
+    public void Missing_or_invalid_version_fails(long? version)
+    {
+        var request = MemoryStick();
+        request.Version = version;
+
+        var result = _validator.Validate(request);
+
+        Assert.Equal(nameof(UpdateArticleRequest.Version), Assert.Single(result.Errors).PropertyName);
+    }
+
+    [Fact]
+    public void Article_rules_from_create_still_apply()
+    {
+        var request = MemoryStick();
+        request.Currency = null;
+
+        var result = _validator.Validate(request);
+
+        Assert.Equal(nameof(UpdateArticleRequest.Currency), Assert.Single(result.Errors).PropertyName);
+    }
+}

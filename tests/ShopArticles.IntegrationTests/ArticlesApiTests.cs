@@ -116,6 +116,67 @@ public class ArticlesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Post_returns_version_1()
+    {
+        var body = await ReadJson(await PostJson(MemoryStick));
+
+        Assert.Equal(1, body.GetProperty("version").GetInt64());
+    }
+
+    [Fact]
+    public async Task Put_with_current_version_updates_article()
+    {
+        await PostJson(MemoryStick);
+
+        var response = await PutJson("/api/articles/1", UpdatedMemoryStick(version: 1));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await ReadJson(response);
+        Assert.Equal(2, body.GetProperty("version").GetInt64());
+        Assert.Equal(31.89m, body.GetProperty("price").GetDecimal());
+
+        var stored = await ReadJson(await _client.GetAsync("/api/articles/1"));
+        Assert.Equal("Branded 256 GB memory stick", stored.GetProperty("description").GetString());
+    }
+
+    [Fact]
+    public async Task Put_after_another_users_update_returns_409()
+    {
+        await PostJson(MemoryStick);
+        // Two users loaded version 1. The first one saves...
+        await PutJson("/api/articles/1", UpdatedMemoryStick(version: 1));
+
+        // ...so the second one's save, still based on version 1, must be rejected.
+        var response = await PutJson("/api/articles/1", UpdatedMemoryStick(version: 1));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var stored = await ReadJson(await _client.GetAsync("/api/articles/1"));
+        Assert.Equal(2, stored.GetProperty("version").GetInt64());
+    }
+
+    [Fact]
+    public async Task Put_of_unknown_article_returns_404()
+    {
+        var response = await PutJson("/api/articles/99", UpdatedMemoryStick(version: 1));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    // The assignment's PUT example: price as a string and no version. Rejected, consistent with POST.
+    [InlineData("""{ "name": "Branded Memory Stick", "description": "Branded 256 GB memory stick", "category": "USB flash drive", "price": "31.89", "currency": "NOK" }""")]
+    [InlineData("""{ "name": "Branded Memory Stick", "description": "Branded 256 GB memory stick", "category": "USB flash drive", "price": 31.89, "currency": "NOK" }""")]
+    [InlineData("""{ "article_id": 1, "name": "Branded Memory Stick", "description": "Branded 256 GB memory stick", "price": 31.89, "currency": "NOK", "version": 1 }""")]
+    public async Task Put_invalid_payload_returns_400(string payload)
+    {
+        await PostJson(MemoryStick);
+
+        var response = await PutJson("/api/articles/1", payload);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Get_by_id_returns_stored_article()
     {
         await PostJson(MemoryStick);
@@ -178,6 +239,20 @@ public class ArticlesApiTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
+
+    private static string UpdatedMemoryStick(long version) => $$"""
+        {
+            "name": "Branded Memory Stick",
+            "description": "Branded 256 GB memory stick",
+            "category": "USB flash drive",
+            "price": 31.89,
+            "currency": "NOK",
+            "version": {{version}}
+        }
+        """;
+
+    private Task<HttpResponseMessage> PutJson(string url, string json) =>
+        _client.PutAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
 
     private Task<HttpResponseMessage> PostJson(string json, string url = "/api/articles") =>
         _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));

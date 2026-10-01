@@ -13,7 +13,7 @@ public class ArticleServiceTests
 
     public ArticleServiceTests()
     {
-        _service = new ArticleService(_repository, new CreateArticleRequestValidator());
+        _service = new ArticleService(_repository, new CreateArticleRequestValidator(), new UpdateArticleRequestValidator());
     }
 
     [Fact]

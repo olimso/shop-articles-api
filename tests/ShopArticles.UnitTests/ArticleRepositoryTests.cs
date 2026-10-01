@@ -160,6 +160,73 @@ public abstract class ArticleRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Add_starts_at_version_1()
+    {
+        var created = await _repository.AddAsync(NewArticle("New"));
+
+        Assert.Equal(1, created.Version);
+        Assert.Equal(1, (await _repository.GetByIdAsync(created.Id))!.Version);
+    }
+
+    [Fact]
+    public async Task Update_with_current_version_replaces_article_and_increments_version()
+    {
+        var created = await _repository.AddAsync(NewArticle("Before"));
+        var changed = NewArticle("After", "Mug");
+        changed.Id = created.Id;
+
+        var result = await _repository.UpdateAsync(changed, expectedVersion: 1);
+
+        Assert.Equal(UpdateStatus.Updated, result.Status);
+        Assert.Equal(2, result.Value!.Version);
+        var stored = await _repository.GetByIdAsync(created.Id);
+        Assert.Equal(("After", "Mug", 2L), (stored!.Name, stored.Category, stored.Version));
+    }
+
+    [Fact]
+    public async Task Update_with_stale_version_is_a_conflict_and_changes_nothing()
+    {
+        var created = await _repository.AddAsync(NewArticle("Original"));
+        var first = NewArticle("First edit");
+        first.Id = created.Id;
+        await _repository.UpdateAsync(first, expectedVersion: 1);
+
+        var second = NewArticle("Second edit, based on version 1");
+        second.Id = created.Id;
+        var result = await _repository.UpdateAsync(second, expectedVersion: 1);
+
+        Assert.Equal(UpdateStatus.Conflict, result.Status);
+        var stored = await _repository.GetByIdAsync(created.Id);
+        Assert.Equal(("First edit", 2L), (stored!.Name, stored.Version));
+    }
+
+    [Fact]
+    public async Task Update_of_unknown_id_is_not_found()
+    {
+        var article = NewArticle("Ghost");
+        article.Id = 42;
+
+        Assert.Equal(UpdateStatus.NotFound, (await _repository.UpdateAsync(article, expectedVersion: 1)).Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_updates_of_the_same_version_let_exactly_one_win()
+    {
+        var created = await _repository.AddAsync(NewArticle("Original"));
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(i => Task.Run(() =>
+        {
+            var edit = NewArticle($"Edit {i}");
+            edit.Id = created.Id;
+            return _repository.UpdateAsync(edit, expectedVersion: 1);
+        })));
+
+        Assert.Single(results, r => r.Status == UpdateStatus.Updated);
+        Assert.Equal(19, results.Count(r => r.Status == UpdateStatus.Conflict));
+        Assert.Equal(2, (await _repository.GetByIdAsync(created.Id))!.Version);
+    }
+
+    [Fact]
     public async Task Stores_all_fields()
     {
         var created = await _repository.AddAsync(new Article
