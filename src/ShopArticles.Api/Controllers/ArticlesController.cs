@@ -18,6 +18,15 @@ public class ArticlesController(IArticleService articleService) : ControllerBase
         return Ok(created);
     }
 
+    // The leading slash makes this route absolute, so it is not prefixed with "api/articles".
+    [HttpPost("/api/articles-concurrent")]
+    [Consumes("application/json")]
+    public async Task<ActionResult<IReadOnlyList<ArticleResponse>>> CreateMany(List<CreateArticleRequest> requests, CancellationToken cancellationToken)
+    {
+        var created = await articleService.CreateManyAsync(requests, cancellationToken);
+        return Ok(created);
+    }
+
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ArticleResponse>> GetById(long id, CancellationToken cancellationToken)
     {

@@ -77,6 +77,45 @@ public class ArticlesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Post_concurrent_stores_all_articles()
+    {
+        var response = await PostJson($"[{MemoryStick}, {DrinkingMug}]", "/api/articles-concurrent");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await ReadJson(response)).EnumerateArray().ToList();
+        Assert.Equal(new[] { "Branded Memory Stick", "Branded Drinking Mug" }, body.Select(a => a.GetProperty("name").GetString()));
+        Assert.Equal(new long[] { 1, 2 }, body.Select(a => a.GetProperty("article_id").GetInt64()).Order());
+
+        var stored = await ReadJson(await _client.GetAsync("/api/articles"));
+        Assert.Equal(2, stored.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Post_concurrent_with_one_invalid_article_returns_400_and_stores_nothing()
+    {
+        const string missingCurrency = """{ "name": "Paid", "description": "No currency", "price": 5 }""";
+
+        var response = await PostJson($"[{MemoryStick}, {missingCurrency}]", "/api/articles-concurrent");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var errors = (await ReadJson(response)).GetProperty("errors");
+        Assert.True(errors.TryGetProperty("[1].currency", out _), errors.ToString());
+
+        var stored = await ReadJson(await _client.GetAsync("/api/articles"));
+        Assert.Equal(0, stored.GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData(MemoryStick)]
+    public async Task Post_concurrent_requires_a_non_empty_array(string payload)
+    {
+        var response = await PostJson(payload, "/api/articles-concurrent");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Get_by_id_returns_stored_article()
     {
         await PostJson(MemoryStick);
@@ -140,8 +179,8 @@ public class ArticlesApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    private Task<HttpResponseMessage> PostJson(string json) =>
-        _client.PostAsync("/api/articles", new StringContent(json, Encoding.UTF8, "application/json"));
+    private Task<HttpResponseMessage> PostJson(string json, string url = "/api/articles") =>
+        _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
 
     private static async Task<JsonElement> ReadJson(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
