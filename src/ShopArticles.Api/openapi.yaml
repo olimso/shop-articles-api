@@ -130,19 +130,19 @@ paths:
                 $ref: '#/components/schemas/ValidationProblemDetails'
 
   /api/articles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The `article_id` of the article.
+        schema:
+          type: integer
+          format: int64
+        example: 1
     get:
       tags: [Articles]
       operationId: getArticleById
       summary: Gets a single article by its id.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: The `article_id` of the article.
-          schema:
-            type: integer
-            format: int64
-          example: 1
       responses:
         '200':
           description: The article.
@@ -152,6 +152,54 @@ paths:
                 $ref: '#/components/schemas/Article'
         '404':
           description: No article with this id exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    put:
+      tags: [Articles]
+      operationId: updateArticle
+      summary: Replaces an article, unless someone else changed it first.
+      description: |
+        Send all article fields (same rules as `POST /api/articles`) plus the `version` you received
+        when you loaded the article. If the stored article still has that version, it is replaced and
+        its `version` goes up by one. If someone else updated it in the meantime, the stored version
+        is higher and the response is `409 Conflict`: load the article again and retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateArticleRequest'
+            example:
+              name: Branded Memory Stick
+              description: Branded 256 GB memory stick
+              category: USB flash drive
+              price: 31.89
+              currency: NOK
+              version: 1
+      responses:
+        '200':
+          description: The updated article with its new `version`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Article'
+        '400':
+          description: The payload breaks the contract, e.g. `version` is missing or `price` is a string.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+        '404':
+          description: No article with this id exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: The article was updated by someone else after `version` was loaded. Nothing was changed.
           content:
             application/problem+json:
               schema:
@@ -191,10 +239,24 @@ components:
           description: ISO 4217 code, case-insensitive (stored upper-case). Required unless `price` is 0.
           example: NOK
 
+    UpdateArticleRequest:
+      description: The same fields and rules as `CreateArticleRequest`, plus the version the client last saw.
+      allOf:
+        - $ref: '#/components/schemas/CreateArticleRequest'
+        - type: object
+          required: [version]
+          properties:
+            version:
+              type: integer
+              format: int64
+              minimum: 1
+              description: The `version` from the article as last loaded.
+              example: 1
+
     Article:
       type: object
       description: An article as returned by the API. Fields with no value are left out.
-      required: [article_id, name, description, price]
+      required: [article_id, name, description, price, version]
       properties:
         article_id:
           type: integer
@@ -216,6 +278,11 @@ components:
         currency:
           type: string
           example: NOK
+        version:
+          type: integer
+          format: int64
+          description: Starts at 1 and goes up by one on every update. Send it back in `PUT`.
+          example: 1
 
     ProblemDetails:
       type: object
