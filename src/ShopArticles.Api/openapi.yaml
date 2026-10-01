@@ -1,0 +1,206 @@
+openapi: 3.0.3
+info:
+  title: Shop Articles API
+  version: v1
+  description: RESTful API for registering and retrieving shop articles.
+
+paths:
+  /api/articles:
+    post:
+      tags: [Articles]
+      operationId: createArticle
+      summary: Creates a new article.
+      description: |
+        The server generates `article_id`; sending it is a validation error.
+
+        `currency` is required unless `price` is 0.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateArticleRequest'
+            examples:
+              memoryStick:
+                summary: Paid article
+                value:
+                  name: Branded Memory Stick
+                  description: Branded 16 GB memory stick
+                  category: USB flash drive
+                  price: 17.89
+                  currency: NOK
+              drinkingMug:
+                summary: Free article (no currency)
+                value:
+                  name: Branded Drinking Mug
+                  description: Porcelain drinking cup with your logo on it.
+                  category: Mug
+                  price: 0
+      responses:
+        '200':
+          description: The created article with its generated `article_id`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Article'
+        '400':
+          description: The payload breaks the contract, e.g. `price` sent as a string.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+
+    get:
+      tags: [Articles]
+      operationId: searchArticles
+      summary: Lists the articles that match the given criteria.
+      description: |
+        Without criteria it returns all articles. Criteria are combined with AND.
+        No match returns an empty array, not 404.
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Partial match on the name, ignoring letter case.
+          schema:
+            type: string
+          example: Branded
+        - name: category
+          in: query
+          required: false
+          description: Exact match on the complete category name.
+          schema:
+            type: string
+          example: USB flash drive
+      responses:
+        '200':
+          description: The matching articles (possibly an empty array).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Article'
+
+  /api/articles/{id}:
+    get:
+      tags: [Articles]
+      operationId: getArticleById
+      summary: Gets a single article by its id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The `article_id` of the article.
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '200':
+          description: The article.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Article'
+        '404':
+          description: No article with this id exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  schemas:
+    CreateArticleRequest:
+      type: object
+      description: Payload for creating a new article. Must not contain `article_id`.
+      required: [name, description, price]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: Branded Memory Stick
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          example: Branded 16 GB memory stick
+        category:
+          type: string
+          maxLength: 64
+          nullable: true
+          example: USB flash drive
+        price:
+          type: number
+          minimum: 0
+          description: A JSON number; a string such as `"17.89"` is rejected.
+          example: 17.89
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z]{3}$'
+          description: ISO 4217 code, case-insensitive (stored upper-case). Required unless `price` is 0.
+          example: NOK
+
+    Article:
+      type: object
+      description: An article as returned by the API. Fields with no value are left out.
+      required: [article_id, name, description, price]
+      properties:
+        article_id:
+          type: integer
+          format: int64
+          description: Server-generated id.
+          example: 1
+        name:
+          type: string
+          example: Branded Memory Stick
+        description:
+          type: string
+          example: Branded 16 GB memory stick
+        category:
+          type: string
+          example: USB flash drive
+        price:
+          type: number
+          example: 17.89
+        currency:
+          type: string
+          example: NOK
+
+    ProblemDetails:
+      type: object
+      description: RFC 7807 problem details.
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        traceId:
+          type: string
+
+    ValidationProblemDetails:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - type: object
+          properties:
+            errors:
+              type: object
+              description: Error messages keyed by JSON field name.
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+          example:
+            type: https://tools.ietf.org/html/rfc9110#section-15.5.1
+            title: One or more validation errors occurred.
+            status: 400
+            errors:
+              currency:
+                - currency is required when price is greater than 0.
