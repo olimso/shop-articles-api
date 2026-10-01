@@ -63,8 +63,24 @@ public class ArticlesApiTests : IAsyncLifetime
         Assert.False(body.TryGetProperty("currency", out _));
     }
 
+    [Fact]
+    public async Task Post_accepts_trailing_comma_as_in_the_assignment_example()
+    {
+        var response = await PostJson("""
+            {
+                "name": "Branded Drinking Mug",
+                "description": "Porcelain drinking cup with your logo on it.",
+                "category": "Mug",
+                "price": 0,
+            }
+            """);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("""{ "name": "Branded Memory Stick", "description": "Branded 16 GB memory stick", "category": "USB flash drive", "price": 17.89 }""")]
+    [InlineData("""{ "name": "Branded Memory Stick", "description": "Branded 16 GB memory stick", "category": "USB flash drive", "price": 17.89, }""")]
     [InlineData("""{ "name": "Branded Memory Stick", "description": "Branded 16 GB memory stick", "category": "USB flash drive", "price": "17.89", "currency": "NOK" }""")]
     [InlineData("""{ "article_id": 7, "name": "Branded Memory Stick", "description": "Branded 16 GB memory stick", "price": 0 }""")]
     [InlineData("""{ "description": "Missing name", "price": 0 }""")]

@@ -18,6 +18,8 @@ builder.Services
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         // ASP.NET Core's web defaults accept numbers sent as strings; the contract requires "price": "17.89" to be a 400.
         options.JsonSerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+        // The assignment's examples have trailing commas ("price": 0,), and pasting them should still work.
+        options.JsonSerializerOptions.AllowTrailingCommas = true;
     });
 
 builder.Services.AddProblemDetails();
