@@ -29,6 +29,10 @@ public class SqliteArticleRepositoryTests : ArticleRepositoryTests
         return new EfArticleRepository(new TestDbContextFactory(options));
     }
 
+    // SQLite serializes writers and checks the version in the UPDATE's WHERE clause, so extra rounds
+    // add no coverage, and each one waits on the database lock (about a second per round).
+    protected override int ConcurrentUpdateRounds => 1;
+
     public override Task DisposeAsync()
     {
         // Pooled connections keep the file open, so release them before deleting it.
@@ -54,6 +58,8 @@ public abstract class ArticleRepositoryTests : IAsyncLifetime
     public async Task InitializeAsync() => _repository = await CreateRepositoryAsync();
 
     public virtual Task DisposeAsync() => Task.CompletedTask;
+
+    protected virtual int ConcurrentUpdateRounds => 20;
 
     private static Article NewArticle(string name, string? category = null) => new()
     {
@@ -212,18 +218,28 @@ public abstract class ArticleRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task Concurrent_updates_of_the_same_version_let_exactly_one_win()
     {
-        var created = await _repository.AddAsync(NewArticle("Original"));
+        const int writers = 20;
 
-        var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(i => Task.Run(() =>
+        // One round rarely hits the race window, so repeat it on fresh articles.
+        for (var round = 0; round < ConcurrentUpdateRounds; round++)
         {
-            var edit = NewArticle($"Edit {i}");
-            edit.Id = created.Id;
-            return _repository.UpdateAsync(edit, expectedVersion: 1);
-        })));
+            var created = await _repository.AddAsync(NewArticle("Original"));
 
-        Assert.Single(results, r => r.Status == UpdateStatus.Updated);
-        Assert.Equal(19, results.Count(r => r.Status == UpdateStatus.Conflict));
-        Assert.Equal(2, (await _repository.GetByIdAsync(created.Id))!.Version);
+            // Every writer waits at the barrier, so all updates start at the same moment.
+            // LongRunning gives each writer its own thread; blocking pool threads would stall the barrier.
+            using var barrier = new Barrier(writers);
+            var results = await Task.WhenAll(Enumerable.Range(0, writers).Select(i => Task.Factory.StartNew(() =>
+            {
+                var edit = NewArticle($"Edit {i}");
+                edit.Id = created.Id;
+                barrier.SignalAndWait();
+                return _repository.UpdateAsync(edit, expectedVersion: 1);
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap()));
+
+            Assert.Single(results, r => r.Status == UpdateStatus.Updated);
+            Assert.Equal(writers - 1, results.Count(r => r.Status == UpdateStatus.Conflict));
+            Assert.Equal(2, (await _repository.GetByIdAsync(created.Id))!.Version);
+        }
     }
 
     [Fact]
