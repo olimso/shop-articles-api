@@ -36,7 +36,7 @@ Articles are JSON in snake_case. The full contract is in [`src/ShopArticles.Api/
 src/
   ShopArticles.Api             Controller, JSON settings, error handling, openapi.yaml
   ShopArticles.Core            Model, contracts, validation, service, repository interface (no ASP.NET dependency)
-  ShopArticles.Infrastructure  In-memory repository and its DI registration
+  ShopArticles.Infrastructure  In-memory and EF Core + SQLite repositories, migrations, DI registration
 tests/
   ShopArticles.UnitTests         Validator, service, repository
   ShopArticles.IntegrationTests  Whole app in memory via WebApplicationFactory
@@ -51,7 +51,7 @@ References point inwards: `Api → Core ← Infrastructure`.
 - **Currencies:** a hardcoded list of active ISO 4217 codes, because `RegionInfo` gives different results on different operating systems.
 - **Errors:** RFC 7807 problem details for `400` and `404`.
 - **API docs:** design-first. The hand-written `openapi.yaml` is the source of truth and Swagger UI only displays it, so the code has no documentation attributes.
-- **Storage:** the repository is an async interface chosen by the `Storage:Provider` setting, so a database can be added as a second implementation.
+- **Storage:** the repository is an async interface chosen by the `Storage:Provider` setting: in memory (default) or EF Core + SQLite. The SQLite repository creates a `DbContext` per call so the concurrent insert stays thread-safe, and the schema is managed with migrations applied on startup.
 
 ## Status
 
@@ -67,11 +67,11 @@ References point inwards: `Api → Core ← Infrastructure`.
 | README | ✅ Done |
 | Publish to GitHub | ✅ Done |
 | Concurrent insert: `POST /api/articles-concurrent` | ✅ Done |
+| Persistence: EF Core + SQLite, selected by `Storage:Provider` | ✅ Done |
 
 ## Next steps
 
 In order of priority:
 
-1. **Persistence:** an EF Core + SQLite repository in `ShopArticles.Infrastructure`, selected with `Storage:Provider = Sqlite`. Core and Api would not change. A `DbContext` is not thread-safe, so the repository must create one per insert (`IDbContextFactory`) for the concurrent insert to keep working.
-2. **Update with optimistic concurrency:** `PUT /api/articles/{id}` with a `version` field, returning `409 Conflict` when the article was changed in the meantime. The assignment's PUT example sends `"price": "31.89"` as a string; to stay consistent with POST, that would be a `400`.
-3. **Contract check:** a test that compares `openapi.yaml` with the running API, so the hand-written spec cannot drift from the code.
+1. **Update with optimistic concurrency:** `PUT /api/articles/{id}` with a `version` field, returning `409 Conflict` when the article was changed in the meantime. The assignment's PUT example sends `"price": "31.89"` as a string; to stay consistent with POST, that would be a `400`.
+2. **Contract check:** a test that compares `openapi.yaml` with the running API, so the hand-written spec cannot drift from the code.
