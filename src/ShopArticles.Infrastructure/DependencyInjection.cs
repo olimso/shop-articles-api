@@ -13,15 +13,18 @@ public static class DependencyInjection
     // InMemory (the default) or Sqlite, which uses the "Articles" connection string.
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var provider = configuration["Storage:Provider"] ?? "InMemory";
+        // A blank value (e.g. "Storage__Provider=" in the environment) counts as unset.
+        var provider = configuration["Storage:Provider"]?.Trim();
+        if (string.IsNullOrEmpty(provider))
+            provider = "InMemory";
 
-        switch (provider)
+        switch (provider.ToLowerInvariant())
         {
-            case "InMemory":
+            case "inmemory":
                 // Singleton: the in-memory store must live for the lifetime of the app.
                 services.AddSingleton<IArticleRepository, InMemoryArticleRepository>();
                 break;
-            case "Sqlite":
+            case "sqlite":
                 var connectionString = configuration.GetConnectionString("Articles")
                     ?? throw new InvalidOperationException("Storage:Provider is Sqlite, but ConnectionStrings:Articles is not set.");
                 services.AddDbContextFactory<ArticlesDbContext>(options => options.UseSqlite(connectionString));
