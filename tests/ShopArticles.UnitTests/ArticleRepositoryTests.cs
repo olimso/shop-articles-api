@@ -1,12 +1,59 @@
+using System.Globalization;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using ShopArticles.Core.Contracts;
 using ShopArticles.Core.Models;
+using ShopArticles.Core.Repositories;
 using ShopArticles.Infrastructure.InMemory;
+using ShopArticles.Infrastructure.Persistence;
 
 namespace ShopArticles.UnitTests;
 
-public class InMemoryArticleRepositoryTests
+public class InMemoryArticleRepositoryTests : ArticleRepositoryTests
 {
-    private readonly InMemoryArticleRepository _repository = new();
+    protected override Task<IArticleRepository> CreateRepositoryAsync() =>
+        Task.FromResult<IArticleRepository>(new InMemoryArticleRepository());
+}
+
+// Runs every test against a real SQLite file, created fresh for each test.
+public class SqliteArticleRepositoryTests : ArticleRepositoryTests
+{
+    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"articles-test-{Guid.NewGuid():N}.db");
+
+    protected override async Task<IArticleRepository> CreateRepositoryAsync()
+    {
+        var options = new DbContextOptionsBuilder<ArticlesDbContext>().UseSqlite($"Data Source={_databasePath}").Options;
+        await using (var db = new ArticlesDbContext(options))
+            await db.Database.MigrateAsync();
+
+        return new EfArticleRepository(new TestDbContextFactory(options));
+    }
+
+    public override Task DisposeAsync()
+    {
+        // Pooled connections keep the file open, so release them before deleting it.
+        SqliteConnection.ClearAllPools();
+        foreach (var suffix in new[] { "", "-shm", "-wal" })
+            File.Delete(_databasePath + suffix);
+        return Task.CompletedTask;
+    }
+
+    private class TestDbContextFactory(DbContextOptions<ArticlesDbContext> options) : IDbContextFactory<ArticlesDbContext>
+    {
+        public ArticlesDbContext CreateDbContext() => new(options);
+    }
+}
+
+// Behaviour every IArticleRepository must have, whatever the storage.
+public abstract class ArticleRepositoryTests : IAsyncLifetime
+{
+    private IArticleRepository _repository = null!;
+
+    protected abstract Task<IArticleRepository> CreateRepositoryAsync();
+
+    public async Task InitializeAsync() => _repository = await CreateRepositoryAsync();
+
+    public virtual Task DisposeAsync() => Task.CompletedTask;
 
     private static Article NewArticle(string name, string? category = null) => new()
     {
@@ -83,5 +130,51 @@ public class InMemoryArticleRepositoryTests
         var stored = await _repository.GetByIdAsync(created.Id);
 
         Assert.Equal("Original", stored!.Name);
+    }
+
+    [Fact]
+    public async Task Search_treats_wildcard_characters_literally()
+    {
+        await _repository.AddAsync(NewArticle("100% cotton shirt"));
+        await _repository.AddAsync(NewArticle("1000 stickers"));
+
+        var result = await _repository.SearchAsync(new ArticleSearchCriteria(Name: "100%"));
+
+        Assert.Equal("100% cotton shirt", Assert.Single(result).Name);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("5")]
+    [InlineData("17.89")]
+    public async Task Price_comes_back_exactly_as_stored(string price)
+    {
+        var article = NewArticle("Priced");
+        article.Price = decimal.Parse(price, CultureInfo.InvariantCulture);
+
+        var created = await _repository.AddAsync(article);
+        var stored = await _repository.GetByIdAsync(created.Id);
+
+        // Compared as text, because 5m and 5.0m are equal as numbers but serialize differently in JSON.
+        Assert.Equal(price, stored!.Price.ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task Stores_all_fields()
+    {
+        var created = await _repository.AddAsync(new Article
+        {
+            Name = "Branded Memory Stick",
+            Description = "Branded 16 GB memory stick",
+            Category = "USB flash drive",
+            Price = 17.89m,
+            Currency = "NOK",
+        });
+
+        var stored = await _repository.GetByIdAsync(created.Id);
+
+        Assert.NotNull(stored);
+        Assert.Equal(("Branded Memory Stick", "Branded 16 GB memory stick", "USB flash drive", 17.89m, "NOK"),
+            (stored.Name, stored.Description, stored.Category, stored.Price, stored.Currency));
     }
 }
