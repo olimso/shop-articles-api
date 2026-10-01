@@ -72,6 +72,21 @@ public class ArticleServiceTests
     }
 
     [Fact]
+    public async Task CreateMany_with_null_item_throws_validation_error_for_that_position()
+    {
+        var requests = new List<CreateArticleRequest>
+        {
+            new() { Name = "Valid", Description = "Valid", Price = 1, Currency = "EUR" },
+            null!,
+        };
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => _service.CreateManyAsync(requests));
+
+        Assert.Equal("[1]", Assert.Single(exception.Errors).PropertyName);
+        Assert.Empty(await _repository.SearchAsync(new ArticleSearchCriteria()));
+    }
+
+    [Fact]
     public async Task CreateMany_with_empty_list_throws()
     {
         await Assert.ThrowsAsync<ValidationException>(() => _service.CreateManyAsync([]));

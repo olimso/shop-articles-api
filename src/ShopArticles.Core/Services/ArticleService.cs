@@ -25,9 +25,12 @@ public class ArticleService(
             throw new ValidationException([new ValidationFailure("", "At least one article is required.")]);
 
         // Errors are keyed by position, e.g. "[1].Currency". The validator has no async rules, so Validate is enough.
+        // A JSON array can contain null even though the type says it can't, and Validate throws on null.
         var failures = requests
-            .SelectMany((request, i) => validator.Validate(request).Errors
-                .Select(f => new ValidationFailure($"[{i}].{f.PropertyName}", f.ErrorMessage)))
+            .SelectMany((request, i) => request is null
+                ? [new ValidationFailure($"[{i}]", "Article must be an object.")]
+                : validator.Validate(request).Errors
+                    .Select(f => new ValidationFailure($"[{i}].{f.PropertyName}", f.ErrorMessage)))
             .ToList();
 
         if (failures.Count > 0)
