@@ -65,13 +65,13 @@ References point inwards: `Api → Core ← Infrastructure`.
 | Unit tests | ✅ Done |
 | Integration tests | ✅ Done |
 | README | ✅ Done |
-| Publish to GitHub | ⏳ To do |
+| Publish to GitHub | ✅ Done |
+| Concurrent insert: `POST /api/articles-concurrent` | ✅ Done |
 
 ## Next steps
 
 In order of priority:
 
-1. **Concurrent insert:** `POST /api/articles-concurrent` accepts an array of articles. All items are validated first (any invalid item gives `400` and nothing is stored), then inserted in parallel. The repository is already thread-safe for this.
-2. **Persistence:** an EF Core + SQLite repository in `ShopArticles.Infrastructure`, selected with `Storage:Provider = Sqlite`. Core and Api would not change.
-3. **Update with optimistic concurrency:** `PUT /api/articles/{id}` with a `version` field, returning `409 Conflict` when the article was changed in the meantime. The assignment's PUT example sends `"price": "31.89"` as a string; to stay consistent with POST, that would be a `400`.
-4. **Contract check:** a test that compares `openapi.yaml` with the running API, so the hand-written spec cannot drift from the code.
+1. **Persistence:** an EF Core + SQLite repository in `ShopArticles.Infrastructure`, selected with `Storage:Provider = Sqlite`. Core and Api would not change. A `DbContext` is not thread-safe, so the repository must create one per insert (`IDbContextFactory`) for the concurrent insert to keep working.
+2. **Update with optimistic concurrency:** `PUT /api/articles/{id}` with a `version` field, returning `409 Conflict` when the article was changed in the meantime. The assignment's PUT example sends `"price": "31.89"` as a string; to stay consistent with POST, that would be a `400`.
+3. **Contract check:** a test that compares `openapi.yaml` with the running API, so the hand-written spec cannot drift from the code.

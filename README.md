@@ -24,6 +24,7 @@ dotnet test
 | Method | URL | Result |
 |---|---|---|
 | `POST` | `/api/articles` | `200` with the created article and its generated `article_id`; `400` on invalid input |
+| `POST` | `/api/articles-concurrent` | Array of articles, inserted in parallel. `200` with the created articles in request order; `400` (and nothing stored) if any article is invalid |
 | `GET` | `/api/articles/{id}` | `200` with the article; `404` if it doesn't exist |
 | `GET` | `/api/articles?name=&category=` | `200` with an array of matches (`[]` if none) |
 
@@ -46,6 +47,10 @@ curl -X POST http://localhost:5099/api/articles -H 'Content-Type: application/js
   "price": 17.89,
   "currency": "NOK"
 }'
+curl -X POST http://localhost:5099/api/articles-concurrent -H 'Content-Type: application/json' -d '[
+  { "name": "Branded Drinking Mug", "description": "Porcelain drinking cup with your logo on it.", "category": "Mug", "price": 0 },
+  { "name": "Branded Pen", "description": "Blue ballpoint pen", "price": 2.5, "currency": "EUR" }
+]'
 curl http://localhost:5099/api/articles/1
 curl 'http://localhost:5099/api/articles?name=branded'
 curl 'http://localhost:5099/api/articles?category=USB%20flash%20drive'
@@ -75,6 +80,7 @@ Dependencies point inwards: `Api → Core ← Infrastructure`. Core has no ASP.N
 - **Currency** is checked against a fixed list of active ISO 4217 codes, case-insensitively, and stored upper-case. It is required when `price > 0`.
 - **Null fields are left out** of responses (e.g. `currency` on a free article), matching the assignment's examples.
 - **Errors** use RFC 7807 problem details. Validation errors are keyed by the JSON field name (`price`, `article_id`).
+- **Concurrent insert is all-or-nothing on validation.** Every article is validated before any is stored, so one invalid article gives `400` and stores nothing. Errors are keyed by position, e.g. `[1].currency`. Valid articles are then inserted with `Parallel.ForEachAsync`; ids are unique but need not follow the request order. An empty array gives `400`.
 - **Storage** is a thread-safe in-memory store (`ConcurrentDictionary` plus an atomic id counter) registered as a singleton. Data is not kept between runs, as the assignment allows.
 
 ## Plan and next steps
